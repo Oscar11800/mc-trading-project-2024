@@ -2,60 +2,56 @@ import numpy as np
 import pandas as pd
 import requests 
 import math
-from scipy import stats
 import xlsxwriter
 import yfinance as yf
+from concurrent.futures import ThreadPoolExecutor
 
+# Read stock symbols from CSV
 stocks = pd.read_csv('tickers.csv', usecols=['Symbol'])
 
-#print(pe_ratio)
+# Split symbols into chunks of 100
+symbol_groups = np.array_split(stocks['Symbol'].to_numpy(), math.ceil(len(stocks) / 100))
 
-def chunks(lst, n):
-    '''divides stocks into chunks of 100 evenly'''
-    for i in range(0, len(lst), n):
-        yield lst[i:i + n]  
-
-symbol_groups = list(chunks(stocks['Symbol'], 100))
-symbol_strings = []
-for i in range(0, len(symbol_groups)):
-    symbol_strings.append(','.join(map(str, symbol_groups[i])))
-
-tickers = []
-prices = []
-pe_ratios = []
-num_shares = []
-
-for symbol_string in symbol_strings:
-    for symbol in np.array(symbol_string.split(',')):
+def fetch_data(symbol):
+    try:
         ticker = yf.Ticker(symbol)
-        ticker_data = ticker.history()
-        if len(ticker_data["Close"]) > 1:
-            last_quote = ticker_data['Close'].iloc[-1]
-        else:
-            continue
-        if "forwardPE" in ticker.info.keys():
-            pe_ratio = ticker.info['forwardPE']
-        else:
-            continue
-        tickers.append(symbol)
-        prices.append(last_quote)
-        pe_ratios.append(pe_ratio)
-        num_shares.append('N/A')
+        info = ticker.info
+        pe_ratio = info.get('forwardPE', np.nan)
 
-final_dataframe = pd.DataFrame({
-    'Ticker': tickers,
-    'Price': prices,
-    'PE Ratio': pe_ratios,
-    'Number of Shares to Buy': num_shares
-})
+        ticker_data = ticker.history(period='1d')
+        last_quote = ticker_data['Close'].iloc[-1] if not ticker_data.empty else np.nan
 
+        return {
+            'Ticker': symbol,
+            'Price': last_quote,
+            'PE Ratio': pe_ratio,
+            'Number of Shares to Buy': 'N/A'
+        }
+    except Exception as e:
+        print(f"Error fetching data for {symbol}: {e}")
+        return None
+
+# Use ThreadPoolExecutor for parallel processing
+with ThreadPoolExecutor() as executor:
+    # Fetch data for all symbols in parallel
+    data_list = list(filter(None, executor.map(fetch_data, stocks['Symbol'])))
+
+# Create the final DataFrame from the list of dictionaries
+final_dataframe = pd.DataFrame(data_list)
+
+# Drop rows with missing data
+final_dataframe = final_dataframe.dropna(subset=['Price', 'PE Ratio'])
+
+# Convert 'PE Ratio' to numeric
 final_dataframe['PE Ratio'] = pd.to_numeric(final_dataframe['PE Ratio'], errors='coerce')
-final_dataframe.sort_values('PE Ratio', inplace = True)
-final_dataframe = final_dataframe[final_dataframe['PE Ratio'] > 0]
-final_dataframe = final_dataframe[:50]
-final_dataframe.reset_index(inplace = True)
-final_dataframe.drop('index', axis=1, inplace = True)
 
+# Filter and sort the DataFrame
+final_dataframe = final_dataframe[final_dataframe['PE Ratio'] > 0].sort_values('PE Ratio').head(50)
+
+# Reset index
+final_dataframe.reset_index(drop=True, inplace=True)
+
+# Define the portfolio_input function
 def portfolio_input():
     global portfolio_size
     portfolio_size = input("Enter the value of your portfolio:")
@@ -67,8 +63,8 @@ def portfolio_input():
         portfolio_size = input("Enter the value of your portfolio:")
 
     position_size = float(portfolio_size) / len(final_dataframe.index)
-    for i in range(0, len(final_dataframe['Ticker'])):
-        final_dataframe.loc[i, 'Number of Shares to Buy'] = math.floor(position_size / final_dataframe['Price'][i])
+    final_dataframe['Number of Shares to Buy'] = (position_size / final_dataframe['Price']).apply(np.floor)
     print(final_dataframe)
 
+# Call the portfolio_input function
 portfolio_input()
