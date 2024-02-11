@@ -26,7 +26,7 @@ pe_ratios = []
 num_shares = []
 
 for symbol_string in symbol_strings:
-    for symbol in symbol_string.split(','):
+    for symbol in np.array(symbol_string.split(',')):
         ticker = yf.Ticker(symbol)
         ticker_data = ticker.history()
         if len(ticker_data["Close"]) > 1:
