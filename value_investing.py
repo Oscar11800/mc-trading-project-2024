@@ -64,7 +64,7 @@ def portfolio_input():
 
     position_size = float(portfolio_size) / len(final_dataframe.index)
     final_dataframe['Number of Shares to Buy'] = (position_size / final_dataframe['Price']).apply(np.floor)
-    print(final_dataframe)
+    return (final_dataframe)
 
 # Call the portfolio_input function
-portfolio_input()
+print(portfolio_input())

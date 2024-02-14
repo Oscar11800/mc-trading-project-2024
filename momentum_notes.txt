@@ -1,0 +1,36 @@
+What is momentum day trading:
+    momentum trading waits for stock price to move and then buys/sells as early as possible. BUY HIGH SELL HIGHER, buy a stock that has already moved up. 7 AM predictable momentum (when brokers open). Buy when number of sellers thin out (about to break the dam and rise in momentum).
+    Strat: check performance of every stock over the last n (12) years, buy top n (10), hold portfolio for 1 month. 
+
+    Algorithm:
+Buy if lookback days has significant mean positive returns
+Sell if lookback days has significant mean negative returns
+Parameters/Inputs
+Lookback (# of days)
+Standard deviation threshold (determines trading signals)
+Intuition:
+Lookback returns can signal us whether the market is in an uptrend or downtrend.
+If there is an uptrend, we expect it to continue to rise and buy.
+If there is a downtrend, we expect it to continue to fall and sell.
+
+
+Breakout algorithm:
+Algorithm
+On Monday morning, note the Opening Price
+Place a buy stop 50 ticks above
+Place a sell short 50 ticks below
+Set Stop to 60 ticks in opposite direction of traded price
+Exit all positions on Friday Afternoon
+Parameters
+Entry Thresh (# of ticks above to place the buy stop)
+Exit Thresh (# of ticks below to place the sell short)
+Intuition: We aim to capture weekly trends in their earliest stages, and expect volatility to increase with large price movements, allowing us to follow a price trend.
+
+
+
+    Data: Usually price series
+Technical Indicator: E.g. Moving Average
+Feedback: Information from technical indicator, e.g. MA1 > MA2
+Assumptions: What we expect to happen based on Feedback (e.g. Momentum)
+Signal: Action to perform, e.g. buy
+
