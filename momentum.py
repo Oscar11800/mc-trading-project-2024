@@ -1,93 +1,85 @@
-import numpy as np
-import pandas as pd
-import yfinance as yf
-import mplfinance as mpf
-import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
-from concurrent.futures import ThreadPoolExecutor
-from value_investing import portfolio_input
+import numpy as np  # For numerical operations
+import pandas as pd  # For handling data in tables (dataframes)
+import yfinance as yf  # For downloading financial data from Yahoo Finance
+import mplfinance as mpf  # For creating financial charts, like candlestick charts
+import matplotlib.pyplot as plt  # For creating plots and charts
+from matplotlib.ticker import FuncFormatter  # For formatting chart labels
+from concurrent.futures import ThreadPoolExecutor  # For parallel execution of code
+from value_investing import portfolio_input  # Custom function to input portfolio data
 
+# Obtain stock tickers from a predefined function that prompts user input or reads a file
 ticks = portfolio_input()
 
-# Define the period for the moving averages and the visualization period
-short_window = 40
-long_window = 100
+# Define time windows for calculating moving averages, a common technique in momentum trading
+# Short window for short-term trends, long window for long-term trends
+short_window = 40  # Short moving average window (e.g., 40 days)
+long_window = 100  # Long moving average window (e.g., 100 days)
+
+# Define the start and end dates for the data to be analyzed
 start_date = "2023-01-01"
 end_date = "2024-01-01"
 
-
-# Define the period for the moving averages
-short_window = 40  # Short moving average window
-long_window = 100  # Long moving average window
-
+# Function to fetch and calculate momentum data for a given stock symbol
 def fetch_momentum_data(symbol):
     """
-    Fetch historical stock data and calculate short and long moving averages.
-    Generate buy/sell signals based on the crossover strategy.
-    
-    Parameters:
-    - symbol: The stock symbol for which to fetch data.
-    
-    Returns:
-    A dictionary containing the ticker, SMA, LMA, and signal.
+    This function fetches historical stock price data and calculates two moving averages (short and long).
+    It then determines the trading signal (buy, sell, hold) based on the crossover of these averages:
+    - A 'buy' signal when the short-term average crosses above the long-term average, indicating upward momentum.
+    - A 'sell' signal when the short-term average crosses below the long-term average, indicating downward momentum.
     """
     try:
-        # Fetch historical data for the last 1 year
-        data = yf.download(symbol, start="2023-01-01", end="2024-01-01")
+        # Download historical stock data for the specified period
+        data = yf.download(symbol, start=start_date, end=end_date)
         
         # Calculate moving averages
-        data['SMA'] = data['Close'].rolling(window=short_window, min_periods=1).mean()
-        data['LMA'] = data['Close'].rolling(window=long_window, min_periods=1).mean()
+        data['SMA'] = data['Close'].rolling(window=short_window, min_periods=1).mean()  # Short-term moving average
+        data['LMA'] = data['Close'].rolling(window=long_window, min_periods=1).mean()  # Long-term moving average
         
-        # Identify signals (1 = Buy, -1 = Sell, 0 = Hold)
+        # Generate trading signals based on the crossover strategy
         data['Signal'] = 0  # Default to hold
         data['Signal'][short_window:] = np.where(data['SMA'][short_window:] > data['LMA'][short_window:], 1, -1)
         
-        # Take the last signal for the most recent trading decision
-        latest_signal = data['Signal'].iloc[-1]
-        
+        # Return the latest data including the signal
         return {
             'Ticker': symbol,
             'Latest Close': data['Close'].iloc[-1],
             'SMA': data['SMA'].iloc[-1],
             'LMA': data['LMA'].iloc[-1],
-            'Signal': latest_signal  # 1 for Buy, -1 for Sell, 0 for Hold
+            'Signal': data['Signal'].iloc[-1]  # 1 for Buy, -1 for Sell, 0 for Hold
         }
     except Exception as e:
         print(f"Error fetching momentum data for {symbol}: {e}")
         return None
 
-# Parallel fetching of momentum data
+# Use parallel processing to fetch momentum data for all symbols in the 'ticks' dataframe
 with ThreadPoolExecutor() as executor:
-    # Extract the 'Ticker' column from the ticks DataFrame
     symbols = ticks['Ticker'].tolist()
     results = list(executor.map(fetch_momentum_data, symbols))
 
-# Filter out None results
+# Filter out any failed data fetches
 results = [result for result in results if result]
 
-# Create a DataFrame from the results
+# Create a DataFrame to neatly organize the fetched data
 momentum_dataframe = pd.DataFrame(results)
+print(momentum_dataframe)  # Display the resulting dataframe
 
-# Display the DataFrame
-print(momentum_dataframe)
-
+# Function to visualize stock data using candlestick charts, highlighting the short and long moving averages
 def visualize_stock(symbol):
     """
-    Visualize the stock data with candlestick chart, including SMA and LMA.
-    
-    Parameters:
-    - symbol: The stock symbol to visualize.
+    This function downloads historical stock data for a given symbol and visualizes it using a candlestick chart.
+    It overlays the short-term and long-term moving averages on the chart to help identify trends and potential
+    buy/sell signals visually.
     """
     data = yf.download(symbol, start=start_date, end=end_date)
     data['SMA'] = data['Close'].rolling(window=short_window, min_periods=1).mean()
     data['LMA'] = data['Close'].rolling(window=long_window, min_periods=1).mean()
     
-    # Create candlestick chart with moving averages
+    # Configure the additional plots for SMA and LMA to overlay on the candlestick chart
     ap = [
         mpf.make_addplot(data['SMA'], color='blue', width=0.7),
         mpf.make_addplot(data['LMA'], color='red', width=0.7)
     ]
+    # Create and show the candlestick chart with SMA and LMA
     mpf.plot(data, type='candle', style='charles', addplot=ap, title=f"{symbol} - SMA and LMA", volume=True)
 
 # Call visualize_stock for a specific stock
@@ -148,5 +140,5 @@ def calculate_all_momentum_returns(ticks, start_date="2023-01-01", end_date="202
 
 # Assuming the `ticks` DataFrame is already defined
 # Call the function to calculate and get the returns DataFrame
-returns_df = calculate_all_momentum_returns(ticks)
+returns_df = calculate_all_momentum_returns(ticks)  
 print(returns_df)
