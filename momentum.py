@@ -1,81 +1,128 @@
 import numpy as np
 import pandas as pd
-from pandas.tseries.offsets import MonthEnd
-import requests 
-import math
-import xlsxwriter
 import yfinance as yf
+import mplfinance as mpf
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 from concurrent.futures import ThreadPoolExecutor
 from value_investing import portfolio_input
 
-#TICKER CLEANING AND COLLECTION
-test_data = 'https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbF9WZk1XQ1hnRk9EVGJKTm9kcEpzOHV1RVpnZ3xBQ3Jtc0tuYm40cW56eFBYcUdoc0taeFUxbU9ibVZWeXhmVnRYdDJOUjN1WEJNWmhzQ0ZxX0FBaHVVTmpLblFfYTlNTVN4UFN6cm05cTR3NFc3Z1FxVTJVbW9hbXNFemNid3RXazFqbUt6anNiWVhFLXhnVm9nSQ&q=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FList_of_S%2526P_500_companies&v=L2nhNvIAyBI'
+ticks = portfolio_input()
 
-# top_50_tickers = portfolio_input()  #gets value investing filtered stocks
-test_ticks = pd.read_html(test_data)[0].Symbol
+# Define the period for the moving averages and the visualization period
+short_window = 40
+long_window = 100
+start_date = "2023-01-01"
+end_date = "2024-01-01"
 
-df_ = pd.read_html(test_data)[1].Symbol
 
-df_.Date = pd.to_datetime(df_.Date.Date)   #transforms date to day-time format
+# Define the period for the moving averages
+short_window = 40  # Short moving average window
+long_window = 100  # Long moving average window
 
-df_ = df_[df_.Date.Date >= '2020-01-01']    #filters from beginning of 2020
-
-#remove added tickers
-test_ticks = test_ticks[~(test_ticks.isin(df_.Added.Ticker))]
-
-ticks_removed = df._Removed.Ticker  #select removed tickers
-ticks_removed = ticks_removed[1:]   #removed Under Armor ticker bc of error
-
-test_ticks = test_ticks.append(ticks_removed)
-test_ticks.drop_duplicates(inplace=True)
-test_ticks.dropna(inplace=True)
-
-start ='2020-01-01'
-prices,symbols = [], [] #for mapping mechanism
-
-for symbol in test_ticks:
-    df = yf.download(symbol, start=start) ['Adj Close'] #adjusted close price
-    if not df.empty:    #avoid empty prices
-        prices.append(df)
-        symbols.append(symbol)
+def fetch_momentum_data(symbol):
+    """
+    Fetch historical stock data and calculate short and long moving averages.
+    Generate buy/sell signals based on the crossover strategy.
+    
+    Parameters:
+    - symbol: The stock symbol for which to fetch data.
+    
+    Returns:
+    A dictionary containing the ticker, SMA, LMA, and signal.
+    """
+    try:
+        # Fetch historical data for the last 1 year
+        data = yf.download(symbol, start="2023-01-01", end="2024-01-01")
         
-all_prices = pd.concat(prices, axis=1)
-all_prices.columns = symbols    #daily prices for all tickers
+        # Calculate moving averages
+        data['SMA'] = data['Close'].rolling(window=short_window, min_periods=1).mean()
+        data['LMA'] = data['Close'].rolling(window=long_window, min_periods=1).mean()
+        
+        # Identify signals (1 = Buy, -1 = Sell, 0 = Hold)
+        data['Signal'] = 0  # Default to hold
+        data['Signal'][short_window:] = np.where(data['SMA'][short_window:] > data['LMA'][short_window:], 1, -1)
+        
+        # Take the last signal for the most recent trading decision
+        latest_signal = data['Signal'].iloc[-1]
+        
+        return {
+            'Ticker': symbol,
+            'Latest Close': data['Close'].iloc[-1],
+            'SMA': data['SMA'].iloc[-1],
+            'LMA': data['LMA'].iloc[-1],
+            'Signal': latest_signal  # 1 for Buy, -1 for Sell, 0 for Hold
+        }
+    except Exception as e:
+        print(f"Error fetching momentum data for {symbol}: {e}")
+        return None
 
-(all_prices.pct_change() + 1).prod -1 #subtracts daily by daily for percentage change and accumulates that for entire time...  subtract 1 to get raw return
+# Parallel fetching of momentum data
+with ThreadPoolExecutor() as executor:
+    # Extract the 'Ticker' column from the ticks DataFrame
+    symbols = ticks['Ticker'].tolist()
+    results = list(executor.map(fetch_momentum_data, symbols))
 
-all_monthly_returns = all_prices.pct_change().resample('M').agg(lambda x: (x+1).prod() -1)     #gets df with all monthly returns
+# Filter out None results
+results = [result for result in results if result]
 
-#df of all montly returns with raw prices
-all_prices.resample('M').last()    #gets last price every month
+# Create a DataFrame from the results
+momentum_dataframe = pd.DataFrame(results)
 
-all_monthly_returns_12 = all_monthly_returns.rolling(12).agg(lambda x: (x+1).prod()-1)
+# Display the DataFrame
+print(momentum_dataframe)
 
-all_monthly_returns_12.dropna(inplace=True) #past year return for all assets
-curr_ = all_monthly_returns_12.iloc[0]
-win_ = curr_.nlargest(10)   #gets top 10 performers over last year
-
-#get return of portfolio over next month
-win_ret = all_monthly_returns.loc[win_.name + MonthEnd(1), win_.index]
-
-#WAYS TO ANALYZE RETURNS
-win_ret.mean()
-
-def momentum(all_monthly_returns, lookback):
-    all_monthly_returns_lb = all_monthly_returns(lookback).agg(lambda x: (x+1).prod()-1)
-    all_monthly_returns_lb.dropna(inplace=True)
+def visualize_stock(symbol):
+    """
+    Visualize the stock data with candlestick chart, including SMA and LMA.
     
-    rets = []
+    Parameters:
+    - symbol: The stock symbol to visualize.
+    """
+    data = yf.download(symbol, start=start_date, end=end_date)
+    data['SMA'] = data['Close'].rolling(window=short_window, min_periods=1).mean()
+    data['LMA'] = data['Close'].rolling(window=long_window, min_periods=1).mean()
     
-    for row in range(len(all_monthly_returns_lb) - 1):
-        curr = all_monthly_returns_lb.iloc[row]
-        win = curr.nlargest(50) #top 10%
-        win_ret = all_monthly_returns.loc[win.name + MonthEnd(1), win.index]
-        rets.append(win_ret.mean())
-    return(pd.Series(rets) + 1).prod()-1
+    # Create candlestick chart with moving averages
+    ap = [
+        mpf.make_addplot(data['SMA'], color='blue', width=0.7),
+        mpf.make_addplot(data['LMA'], color='red', width=0.7)
+    ]
+    mpf.plot(data, type='candle', style='charles', addplot=ap, title=f"{symbol} - SMA and LMA", volume=True)
 
-for lookback in range(1,13):
-    print(momentum(all_monthly_returns, lookback))
+# Call visualize_stock for a specific stock
+visualize_stock('AAPL')  # Example symbol
+
+def calculate_momentum_returns(symbol):
+    """
+    Calculate and plot the cumulative returns for the momentum strategy vs. buy-and-hold strategy.
     
-s_p = yf.download('GSPC', start=start)
-(s_p.Close.pct_change() + 1).prod() -1
+    Parameters:
+    - symbol: The stock symbol to analyze.
+    """
+    data = yf.download(symbol, start=start_date, end=end_date)
+    data['SMA'] = data['Close'].rolling(window=short_window, min_periods=1).mean()
+    data['LMA'] = data['Close'].rolling(window=long_window, min_periods=1).mean()
+    
+    # Generate signals
+    data['Signal'] = 0
+    data['Signal'] = np.where(data['SMA'] > data['LMA'], 1, -1)
+    data['Position'] = data['Signal'].diff()
+    
+    # Calculate daily returns and strategy returns
+    data['Market Returns'] = data['Close'].pct_change()
+    data['Strategy Returns'] = data['Market Returns'] * data['Signal'].shift(1)
+    
+    # Plot cumulative returns
+    cumulative_market_returns = (1 + data['Market Returns']).cumprod() - 1
+    cumulative_strategy_returns = (1 + data['Strategy Returns']).cumprod() - 1
+    
+    plt.figure(figsize=(10,5))
+    plt.plot(cumulative_market_returns, color='r', label='Market Returns')
+    plt.plot(cumulative_strategy_returns, color='g', label='Strategy Returns')
+    plt.title(f"Cumulative Returns for {symbol}")
+    plt.legend()
+    plt.show()
+
+# Call calculate_momentum_returns for a specific stock
+calculate_momentum_returns('AAPL')  # Example symbol
