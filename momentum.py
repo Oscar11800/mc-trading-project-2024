@@ -91,38 +91,62 @@ def visualize_stock(symbol):
     mpf.plot(data, type='candle', style='charles', addplot=ap, title=f"{symbol} - SMA and LMA", volume=True)
 
 # Call visualize_stock for a specific stock
-visualize_stock('AAPL')  # Example symbol
+# visualize_stock('AAPL')  # Example symbol
 
-def calculate_momentum_returns(symbol):
+def calculate_all_momentum_returns(ticks, start_date="2023-01-01", end_date="2024-01-01", short_window=40, long_window=100):
     """
-    Calculate and plot the cumulative returns for the momentum strategy vs. buy-and-hold strategy.
+    Calculate the cumulative returns for the momentum strategy and market for all stocks in `ticks`.
     
     Parameters:
-    - symbol: The stock symbol to analyze.
+    - ticks: DataFrame containing stock tickers.
+    - start_date: The start date for fetching historical data.
+    - end_date: The end date for fetching historical data.
+    - short_window: The window size for the short moving average.
+    - long_window: The window size for the long moving average.
+    
+    Returns:
+    A DataFrame with tickers and their cumulative market and strategy returns.
     """
-    data = yf.download(symbol, start=start_date, end=end_date)
-    data['SMA'] = data['Close'].rolling(window=short_window, min_periods=1).mean()
-    data['LMA'] = data['Close'].rolling(window=long_window, min_periods=1).mean()
-    
-    # Generate signals
-    data['Signal'] = 0
-    data['Signal'] = np.where(data['SMA'] > data['LMA'], 1, -1)
-    data['Position'] = data['Signal'].diff()
-    
-    # Calculate daily returns and strategy returns
-    data['Market Returns'] = data['Close'].pct_change()
-    data['Strategy Returns'] = data['Market Returns'] * data['Signal'].shift(1)
-    
-    # Plot cumulative returns
-    cumulative_market_returns = (1 + data['Market Returns']).cumprod() - 1
-    cumulative_strategy_returns = (1 + data['Strategy Returns']).cumprod() - 1
-    
-    plt.figure(figsize=(10,5))
-    plt.plot(cumulative_market_returns, color='r', label='Market Returns')
-    plt.plot(cumulative_strategy_returns, color='g', label='Strategy Returns')
-    plt.title(f"Cumulative Returns for {symbol}")
-    plt.legend()
-    plt.show()
+    def calculate_momentum_returns(symbol):
+        try:
+            data = yf.download(symbol, start=start_date, end=end_date)
+            if data.empty:
+                return None
+            
+            data['SMA'] = data['Close'].rolling(window=short_window, min_periods=1).mean()
+            data['LMA'] = data['Close'].rolling(window=long_window, min_periods=1).mean()
+            
+            # Generate signals
+            data['Signal'] = np.where(data['SMA'] > data['LMA'], 1, -1)
+            
+            # Calculate daily returns and strategy returns
+            data['Market Returns'] = data['Close'].pct_change()
+            data['Strategy Returns'] = data['Market Returns'] * data['Signal'].shift(1)
+            
+            # Calculate cumulative returns
+            data['Cumulative Market Returns'] = (1 + data['Market Returns']).cumprod() - 1
+            data['Cumulative Strategy Returns'] = (1 + data['Strategy Returns']).cumprod() - 1
+            
+            return {
+                'Ticker': symbol,
+                'Cumulative Market Returns': data['Cumulative Market Returns'].iloc[-1],
+                'Cumulative Strategy Returns': data['Cumulative Strategy Returns'].iloc[-1]
+            }
+        except Exception as e:
+            print(f"Error calculating momentum returns for {symbol}: {e}")
+            return None
 
-# Call calculate_momentum_returns for a specific stock
-calculate_momentum_returns('AAPL')  # Example symbol
+    # Execute the momentum returns calculation in parallel for all tickers
+    with ThreadPoolExecutor() as executor:
+        returns_results = list(executor.map(calculate_momentum_returns, ticks['Ticker']))
+
+    # Filter out None results and assemble the DataFrame
+    returns_results = [result for result in returns_results if result]
+    returns_dataframe = pd.DataFrame(returns_results)
+
+    return returns_dataframe
+
+# Assuming the `ticks` DataFrame is already defined
+# Call the function to calculate and get the returns DataFrame
+returns_df = calculate_all_momentum_returns(ticks)
+print(returns_df)
