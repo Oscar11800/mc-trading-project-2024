@@ -1,3 +1,5 @@
+# Lots of comments for ppt writing
+
 import numpy as np  # For numerical operations
 import pandas as pd  # For handling data in tables (dataframes)
 import yfinance as yf  # For downloading financial data from Yahoo Finance
@@ -82,7 +84,7 @@ def visualize_stock(symbol):
     # Create and show the candlestick chart with SMA and LMA
     mpf.plot(data, type='candle', style='charles', addplot=ap, title=f"{symbol} - SMA and LMA", volume=True)
 
-# Call visualize_stock for a specific stock
+# Call visualize_stock for a specific stock, not currently in use
 # visualize_stock('AAPL')  # Example symbol
 
 def calculate_all_momentum_returns(ticks, start_date="2023-01-01", end_date="2024-01-01", short_window=40, long_window=100):
@@ -139,6 +141,6 @@ def calculate_all_momentum_returns(ticks, start_date="2023-01-01", end_date="202
     return returns_dataframe
 
 # Assuming the `ticks` DataFrame is already defined
-# Call the function to calculate and get the returns DataFrame
+# Call the function to calculate and get the returns DataFrame for backtesting
 returns_df = calculate_all_momentum_returns(ticks)  
 print(returns_df)
