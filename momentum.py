@@ -69,18 +69,27 @@ def visualize_stock(data, symbol):
 
 
     
-def calculate_rsi(data, window=14):
-    delta = data['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+def RSI(data, window=14, adjust=False):
+    delta = data['Close'].diff(1).dropna()
+    loss = delta.copy()
+    gains = delta.copy()
 
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    data['RSI'] = rsi.fillna(0)  # Fill NA values with 0 for simplicity
+    gains[gains < 0] = 0
+    loss[loss > 0] = 0
+
+    gain_ewm = gains.ewm(com=window - 1, adjust=adjust).mean()
+    loss_ewm = abs(loss.ewm(com=window - 1, adjust=adjust).mean())
+
+    RS = gain_ewm / loss_ewm
+    RSI = 100 - 100 / (1 + RS)
+
+    return RSI
+
+
 
 def generate_signals_with_risk_management(data):
     stop_loss_pct = 0.05  # 5% stop loss
-    take_profit_pct = 0.10  # 10% take profit
+    take_profit_pct = 0.10 # 10% take profit
     # Initialize additional columns for tracking
     data['Entry Price'] = np.nan
     data['Exit Signal'] = 0
@@ -107,10 +116,20 @@ def generate_signals_with_risk_management(data):
 
 def calculate_momentum_returns(data):
     try:
+        # Initialize the strategy return as the market return for now
         data['Market Returns'] = data['Close'].pct_change()
         data['Strategy Returns'] = data['Market Returns'] * data['Signal'].shift(1)
+
+        # Now adjust the strategy return based on the exit signal
+        for i in range(1, len(data)):
+            if data.loc[data.index[i], 'Exit Signal'] == -1:
+                # If there's an exit signal, we should not have any returns on the next day
+                data.loc[data.index[i], 'Strategy Returns'] = 0
+                
+        # Calculate cumulative returns
         data['Cumulative Market Returns'] = (1 + data['Market Returns']).cumprod() - 1
         data['Cumulative Strategy Returns'] = (1 + data['Strategy Returns']).cumprod() - 1
+        
         return {
             'Ticker': symbol,
             'Cumulative Market Returns': data['Cumulative Market Returns'].iloc[-1],
@@ -120,11 +139,12 @@ def calculate_momentum_returns(data):
         print(f"Error calculating momentum returns: {e}")
         return None
 
-data = fetch_momentum_data(symbol)
 
+data = fetch_momentum_data(symbol)
+data['RSI'] = RSI(data)
 if data is not None:
     # Calculate indicators
-    calculate_rsi(data)
+    RSI(data)
 
     # Generate signals using SMA, LMA, and RSI
     generate_signals_with_risk_management(data)
