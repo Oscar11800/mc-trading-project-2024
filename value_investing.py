@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 stocks = pd.read_csv('tickers.csv', usecols=['Symbol'])
 
 # Split symbols into chunks of 100
-symbol_groups = np.array_split(stocks['Symbol'].to_numpy(), math.ceil(len(stocks) / 100))
+#symbol_groups = np.array_split(stocks['Symbol'].to_numpy(), math.ceil(len(stocks) / 100))
 
 def fetch_data(symbol):
     try:
