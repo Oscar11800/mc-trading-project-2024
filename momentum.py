@@ -15,6 +15,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module='mplfinance.*')
 short_window = 40  # Short moving average window (e.g., 40 days)
 long_window = 80  # Long moving average window (e.g., 100 days)
 
+
+
 # Define the start and end dates for the data to be analyzed
 start_date = "2023-01-01"
 end_date = "2024-01-01"
@@ -57,6 +59,26 @@ def visualize_stock(data, symbol):
     
     # Add the legend to the first (price) axis
     axlist[0].legend(handles=[blue_line, red_line], loc='upper left')
+    
+def calculate_rsi(data, window=14):
+    delta = data['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    data['RSI'] = rsi.fillna(0)  # Fill NA values with 0 for simplicity
+
+def generate_signals(data):
+    # Assuming 'Signal' column already exists and is initialized to 0
+    # Buy signal: SMA > LMA and RSI < 30
+    buy_signals = (data['SMA'] > data['LMA']) & (data['RSI'] < 30)
+    data.loc[buy_signals, 'Signal'] = 1
+
+    # Sell signal: SMA < LMA or RSI > 70
+    sell_signals = (data['SMA'] < data['LMA']) | (data['RSI'] > 70)
+    data.loc[sell_signals, 'Signal'] = -1
+
 
 def calculate_momentum_returns(data):
     try:
@@ -73,18 +95,23 @@ def calculate_momentum_returns(data):
         print(f"Error calculating momentum returns: {e}")
         return None
 
-# Fetch momentum data for AAPL
 data = fetch_momentum_data(symbol)
 
 if data is not None:
-    visualize_stock(data, symbol)
-    plt.savefig('momentum_plot.png')  # Correct place to save the plot
+    # Calculate indicators
+    calculate_rsi(data)
 
-    # Calculate and display the momentum returns for AAPL
+    # Generate signals using SMA, LMA, and RSI
+    generate_signals(data)
+
+    # Visualization and calculation of returns
+    visualize_stock(data, symbol)
+    plt.savefig('momentum_plot.png')
+
     momentum_returns = calculate_momentum_returns(data)
     print(pd.DataFrame([momentum_returns]))
 else:
-    print("Failed to fetch data for AAPL.")
+    print("Failed to fetch data for", symbol)
 
     
 # Calculate and display the momentum returns for AAPL
